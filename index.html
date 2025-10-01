@@ -360,9 +360,9 @@
       GAMESCUSTOMFIELDS_RTP: "gamesCustomFields_rtp",
       GAMESCUSTOMFIELDS_LINES: "gamesCustomFields_lines",
       GAMESCUSTOMFIELDS_REELS: "gamesCustomFields_reels",
-    } as const;
+    };
 
-    const CORE_REQUIRED_INPUT_HEADER_KEYS: (keyof typeof INPUT_HEADER_MAPPINGS)[] = [
+    const CORE_REQUIRED_INPUT_HEADER_KEYS: string[] = [
       'GAME_CODE',
       'NAME',
       'GAME_PROVIDER',
@@ -518,12 +518,12 @@
       const missingRequiredHeaders: string[] = [];
 
       for (const internalKey in INPUT_HEADER_MAPPINGS) {
-        const expectedHeader = INPUT_HEADER_MAPPINGS[internalKey as keyof typeof INPUT_HEADER_MAPPINGS];
+        const expectedHeader = (INPUT_HEADER_MAPPINGS as any)[internalKey];
         const index = headerCells.indexOf(expectedHeader);
         if (index !== -1) {
           headerIndices[internalKey] = index;
         } else {
-          if (CORE_REQUIRED_INPUT_HEADER_KEYS.includes(internalKey as keyof typeof INPUT_HEADER_MAPPINGS)) {
+          if (CORE_REQUIRED_INPUT_HEADER_KEYS.includes(internalKey)) {
             missingRequiredHeaders.push(expectedHeader);
           }
         }
@@ -564,7 +564,7 @@
       for (let i = 1; i < lines.length; i++) {
         const cells = lines[i].split('\t');
         
-        const getCellValue = (internalKey: keyof typeof INPUT_HEADER_MAPPINGS): string | undefined => {
+        const getCellValue = (internalKey: string): string | undefined => {
           const index = headerIndices[internalKey];
           return index !== undefined ? cells[index]?.trim() : undefined;
         };
