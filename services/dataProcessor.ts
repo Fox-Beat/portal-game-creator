@@ -1,16 +1,36 @@
-import { ProcessedGameData, GameProviderFolderMapping } from '../types';
-import { INPUT_HEADER_MAPPINGS, CORE_REQUIRED_INPUT_HEADER_KEYS } from '../constants';
+import { ProcessedGameData, GameProviderFolderMapping } from '../types.ts';
+import { INPUT_HEADER_MAPPINGS, CORE_REQUIRED_INPUT_HEADER_KEYS } from '../constants.ts';
+
+/**
+ * Sanitizes a string for legacy systems by removing diacritics (accents)
+ * from characters, but leaves other symbols like ™, ®, © intact.
+ * For example, 'ió' becomes 'io'.
+ * @param text The string to sanitize.
+ * @returns The sanitized string.
+ */
+function sanitizeForLegacyCsv(text: string): string {
+    if (typeof text !== 'string' || !text) {
+        return '';
+    }
+    // Use Unicode normalization to separate base characters from their accents.
+    // 'NFD' (Normalization Form Canonical Decomposition) splits 'é' into 'e' + '´' (combining accent).
+    // The regex /[\u0300-\u036f]/g matches and removes all combining diacritical marks (accents).
+    // This handles a wide range of characters like á, é, í, ó, ú, ü, ñ etc., leaving other symbols untouched.
+    return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
 
 function generateSeoFriendlyName(name: string): string {
   if (!name) return '';
-  return name
+  
+  // First, sanitize to handle accented characters.
+  const sanitizedName = sanitizeForLegacyCsv(name);
+
+  // Then, create a clean URL-friendly slug.
+  return sanitizedName
     .toLowerCase()
-    .replace(/™/g, '') // Remove trademark symbol
-    .replace(/®/g, '') // Remove registered symbol
-    .replace(/©/g, '') // Remove copyright symbol
-    .replace(/%/g, '')  // Remove percentage sign
-    .replace(/&/g, 'and') // Replace ampersand
-    .replace(/[^\w\s-]/g, '') // Remove non-alphanumeric, keeping spaces and hyphens
+    .replace(/&/g, 'and') // Replace ampersand for readability
+    .replace(/[^\w\s-]/g, '') // Remove remaining non-alphanumeric chars (like ™), keeping spaces and hyphens
     .trim() // Trim leading/trailing whitespace
     .replace(/\s+/g, '-') // Replace spaces (single or multiple) with a single hyphen
     .replace(/-+/g, '-') // Replace multiple hyphens with a single hyphen
@@ -34,7 +54,8 @@ function parseBooleanString(value: string | undefined, defaultValue: boolean = f
 
 export function parsePastedData(
   text: string,
-  providerMap: GameProviderFolderMapping // Accept providerMap as an argument
+  providerMap: GameProviderFolderMapping,
+  options: { isGameNew: boolean; isMaintenanceMode: boolean; }
 ): ProcessedGameData[] {
   const lines = text.trim().split('\n');
   if (lines.length < 2) {
@@ -45,13 +66,15 @@ export function parsePastedData(
   const headerIndices: { [internalKey: string]: number } = {};
   const missingRequiredHeaders: string[] = [];
 
-  for (const internalKey in INPUT_HEADER_MAPPINGS) {
-    const expectedHeader = INPUT_HEADER_MAPPINGS[internalKey as keyof typeof INPUT_HEADER_MAPPINGS];
-    const index = headerCells.indexOf(expectedHeader);
+  const mappingKeys = Object.keys(INPUT_HEADER_MAPPINGS) as (keyof typeof INPUT_HEADER_MAPPINGS)[];
+  for (const internalKey of mappingKeys) {
+    const expectedHeader = INPUT_HEADER_MAPPINGS[internalKey];
+    // Case-insensitive header matching
+    const index = headerCells.findIndex(h => h.toLowerCase() === expectedHeader.toLowerCase());
     if (index !== -1) {
       headerIndices[internalKey] = index;
     } else {
-      if (CORE_REQUIRED_INPUT_HEADER_KEYS.includes(internalKey as keyof typeof INPUT_HEADER_MAPPINGS)) {
+      if (CORE_REQUIRED_INPUT_HEADER_KEYS.includes(internalKey)) {
         missingRequiredHeaders.push(expectedHeader);
       }
     }
@@ -63,8 +86,6 @@ export function parsePastedData(
   
   const processedGames: ProcessedGameData[] = [];
 
-  // This map defines how to rename providers for the final output CSV for providers
-  // that don't have special routing (like 'via SG').
   const providerDisplayNameMap: { [key: string]: string } = {
     'pragmatic': 'Pragmatic Play',
     'sg': 'Light and Wonder',
@@ -72,28 +93,6 @@ export function parsePastedData(
     'hacksaw': 'Hacksaw',
     'hacksaw openrgs': 'Hacksaw',
   };
-
-  // Helper to process existing image paths to avoid duplicating logic
-  const processExistingImagePath = (pathValue: string | undefined): string | undefined => {
-      if (!pathValue) return undefined;
-      const trimmedPath = pathValue.trim();
-      if (trimmedPath.startsWith('http://') || trimmedPath.startsWith('https://')) {
-          return trimmedPath;
-      }
-      let path = trimmedPath;
-      // Normalize by removing any leading slash to start clean
-      if (path.startsWith('/')) {
-          path = path.substring(1);
-      }
-      // If the path already includes the 'library' root, construct a relative path.
-      if (path.toLowerCase().startsWith('library/')) {
-          return path;
-      } else {
-          // Otherwise, prepend 'library/' to make it a relative path
-          return `library/${path}`;
-      }
-  };
-
 
   for (let i = 1; i < lines.length; i++) {
     const cells = lines[i].split('\t');
@@ -103,9 +102,13 @@ export function parsePastedData(
       return index !== undefined ? cells[index]?.trim() : undefined;
     };
 
-    const gameCode = getCellValue('GAME_CODE');
+    const gameCode = getCellValue('IMS_GAME_CODE');
     const name = getCellValue('NAME');
     const originalGameProvider = getCellValue('GAME_PROVIDER'); 
+    const providerGameCode = getCellValue('PROVIDER_GAME_CODE');
+    const category = getCellValue('CATEGORY');
+    const portraitTileStatus = getCellValue('PORTRAIT_TILE_STATUS');
+    const tileStatus = getCellValue('TILE_STATUS');
 
     if (!gameCode || !name || !originalGameProvider) {
       console.warn(`Skipping line ${i + 1}: Missing core data (gameCode, name, or gameProvider).`);
@@ -122,83 +125,42 @@ export function parsePastedData(
     } else if (lowerCaseProvider.includes(' via sg') || lowerCaseProvider.includes(' via lnw')) {
         finalGameProvider = originalGameProvider.replace(/ via sg/i, '').replace(/ via lnw/i, '').trim();
         
-        // Handle specific name cleanups after stripping suffix
         if (finalGameProvider.toLowerCase() === 'high5') {
             finalGameProvider = 'High 5';
         } else if (finalGameProvider.toLowerCase() === 'lightning box') {
             finalGameProvider = 'Lightning Box';
         }
 
-        // ELK Studios has its own folder structure even when distributed via LNW/SG.
         if (finalGameProvider.toLowerCase().startsWith('elk studio')) {
             providerForImageUrl = finalGameProvider;
         } else {
-            // Other partners via LNW/SG use the SG folder as a default.
             providerForImageUrl = 'SG';
         }
     } else {
-        // Handle all other providers
         finalGameProvider = providerDisplayNameMap[lowerCaseProvider] || originalGameProvider;
         providerForImageUrl = originalGameProvider;
     }
 
-
-    let seoFriendlyGameName = getCellValue('SEO_FRIENDLY_GAME_NAME');
-    if (!seoFriendlyGameName) {
-      seoFriendlyGameName = generateSeoFriendlyName(name);
-    }
+    const seoFriendlyGameName = generateSeoFriendlyName(name);
     
-    // Common path generation logic
-    const folderNameFromMap = providerMap[providerForImageUrl]; // Use the passed providerMap
+    const folderNameFromMap = providerMap[providerForImageUrl];
     const providerFolderName = folderNameFromMap || providerForImageUrl; 
     const encodedFolderName = encodeURIComponent(providerFolderName);
     const baseIconPath = `library/Game%20Icons/${encodedFolderName}`;
+    
+    const defaultGameImage = `/${baseIconPath}/${gameCode}.webp`;
+    
+    const portrait_layout1x1_mainImage = (portraitTileStatus?.trim().toLowerCase() === 'done')
+        ? `/${baseIconPath}/${gameCode}_p.webp`
+        : undefined;
 
-    // Default Game Image (Square)
-    let defaultGameImage: string;
-    const defaultUserImageValue = getCellValue('DEFAULT_USER_IMAGE');
-    const processedDefaultUserImage = processExistingImagePath(defaultUserImageValue);
-    if (processedDefaultUserImage) {
-        defaultGameImage = processedDefaultUserImage;
-    } else {
-        defaultGameImage = `${baseIconPath}/${gameCode}.webp`;
-    }
+    const landscape_layout1x1_mainImage = (tileStatus?.trim().toLowerCase() === 'yes')
+        ? `/${baseIconPath}/${gameCode}_l.webp`
+        : undefined;
     
-    // Landscape Game Image - Conditional generation
-    let landscape_layout1x1_mainImage: string | undefined;
-    const landscapeImageValue = getCellValue('LANDSCAPE_LAYOUT_1X1_MAIN_IMAGE');
-    const landscapeTileStatus = getCellValue('LANDSCAPE_TILE_STATUS');
-    const processedLandscapeImage = processExistingImagePath(landscapeImageValue);
-    
-    if (processedLandscapeImage) {
-        // If an explicit URL is provided in the input, use it.
-        landscape_layout1x1_mainImage = processedLandscapeImage;
-    } else if (landscapeTileStatus?.trim().toLowerCase() === 'done') {
-        // Otherwise, if the status is 'Done', generate the URL.
-        landscape_layout1x1_mainImage = `${baseIconPath}/landscape/${gameCode}.webp`;
-    }
-    // If neither condition is met, it remains undefined (empty).
-    
-    // Portrait Game Image - Conditional generation
-    let portrait_layout1x1_mainImage: string | undefined;
-    const portraitImageValue = getCellValue('PORTRAIT_LAYOUT_1X1_MAIN_IMAGE');
-    const portraitTileStatus = getCellValue('PORTRAIT_TILE_STATUS');
-    const processedPortraitImage = processExistingImagePath(portraitImageValue);
-    
-    if (processedPortraitImage) {
-        // If an explicit URL is provided in the input, use it.
-        portrait_layout1x1_mainImage = processedPortraitImage;
-    } else if (portraitTileStatus?.trim().toLowerCase() === 'done') {
-        // Otherwise, if the status is 'Done', generate the URL.
-        portrait_layout1x1_mainImage = `${baseIconPath}/portrait/${gameCode}.webp`;
-    }
-    // If neither condition is met, it remains undefined (empty).
-    
-    const mobileGameCode = getCellValue('MOBILE_GAME_CODE') || gameCode;
-
     let desktopGameTypeFinal = "POP";
     let mobileGameTypeFinal = "POP";
-    let liveLaunchAliasValue = getCellValue('LIVE_LAUNCH_ALIAS'); 
+    let liveLaunchAliasValue = undefined; 
 
     if (lowerCaseProvider === "playtech") {
       desktopGameTypeFinal = "GPAS";
@@ -212,12 +174,15 @@ export function parsePastedData(
     const rowData: ProcessedGameData = {
       gameCode, 
       name,
-      gameProvider: finalGameProvider, 
-      mobileGameCode,
+      isActive: true,
+      mobileGameCode: gameCode,
       seoFriendlyGameName,
       defaultGameImage,
-      isActive: true,
-      isExcludedFromPGG: parseBooleanString(getCellValue('IS_EXCLUDED_FROM_PGG')),
+      gameProvider: finalGameProvider, 
+      desktopGameType: desktopGameTypeFinal,
+      mobileGameType: mobileGameTypeFinal,
+      liveLaunchAlias: liveLaunchAliasValue,
+      isExcludedFromPGG: false,
       isExcludedFromSitemap: false, 
       deviceAvailability_mobile: true,
       deviceAvailability_tablet: true,
@@ -232,88 +197,37 @@ export function parsePastedData(
       osAvailability_android: true,
       osAvailability_windows: true,
       osAvailability_other: true,
-      isGameNew: parseBooleanString(getCellValue('IS_GAME_NEW'), true), 
-      isGamePopular: parseBooleanString(getCellValue('IS_GAME_POPULAR')),
-      isGameHot: parseBooleanString(getCellValue('IS_GAME_HOT')),
-      isGameExclusive: parseBooleanString(getCellValue('IS_GAME_EXCLUSIVE')),
-
-      desktopGameType: desktopGameTypeFinal,
-      mobileGameType: mobileGameTypeFinal,
-      liveLaunchAlias: liveLaunchAliasValue, 
-      bingoGameType: getCellValue('BINGO_GAME_TYPE'),
-      vfGameType: getCellValue('RTP_GAME_TYPE'), 
-      jackpotCode: getCellValue('JACKPOT_CODE'),
+      isGameNew: options.isGameNew,
+      isGamePopular: false,
+      isGameHot: false,
+      isGameExclusive: false,
       demoModeSupport: "unavailable", 
-      gameMode: "Maintenance", 
-      urlCustomParameters: getCellValue('URL_CUSTOM_PARAMETERS'),
+      gameMode: options.isMaintenanceMode ? "maintenance" : "Default",
       
       landscape_layout1x1_mainImage: landscape_layout1x1_mainImage,
-      landscape_layout1x1_mobileImage: getCellValue('LANDSCAPE_LAYOUT_1X1_MOBILE_IMAGE'),
-      landscape_layout1x1_guestMainImage: getCellValue('LANDSCAPE_LAYOUT_1X1_GUEST_MAIN_IMAGE'),
-      landscape_layout1x1_guestMobileImage: getCellValue('LANDSCAPE_LAYOUT_1X1_GUEST_MOBILE_IMAGE'),
-      landscape_layout1x2_mainImage: getCellValue('LANDSCAPE_LAYOUT_1X2_MAIN_IMAGE'),
-      landscape_layout1x2_mobileImage: getCellValue('LANDSCAPE_LAYOUT_1X2_MOBILE_IMAGE'),
-      landscape_layout1x2_guestMainImage: getCellValue('LANDSCAPE_LAYOUT_1X2_GUEST_MAIN_IMAGE'),
-      landscape_layout1x2_guestMobileImage: getCellValue('LANDSCAPE_LAYOUT_1X2_GUEST_MOBILE_IMAGE'),
-      landscape_layout2x1_mainImage: getCellValue('LANDSCAPE_LAYOUT_2X1_MAIN_IMAGE'),
-      landscape_layout2x1_mobileImage: getCellValue('LANDSCAPE_LAYOUT_2X1_MOBILE_IMAGE'),
-      landscape_layout2x1_guestMainImage: getCellValue('LANDSCAPE_LAYOUT_2X1_GUEST_MAIN_IMAGE'),
-      landscape_layout2x1_guestMobileImage: getCellValue('LANDSCAPE_LAYOUT_2X1_GUEST_MOBILE_IMAGE'),
-      landscape_layout2x2_mainImage: getCellValue('LANDSCAPE_LAYOUT_2X2_MAIN_IMAGE'),
-      landscape_layout2x2_mobileImage: getCellValue('LANDSCAPE_LAYOUT_2X2_MOBILE_IMAGE'),
-      landscape_layout2x2_guestMainImage: getCellValue('LANDSCAPE_LAYOUT_2X2_GUEST_MAIN_IMAGE'),
-      landscape_layout2x2_guestMobileImage: getCellValue('LANDSCAPE_LAYOUT_2X2_GUEST_MOBILE_IMAGE'),
-      
       portrait_layout1x1_mainImage: portrait_layout1x1_mainImage,
-      portrait_layout1x1_mobileImage: getCellValue('PORTRAIT_LAYOUT_1X1_MOBILE_IMAGE'),
-      portrait_layout1x1_guestMainImage: getCellValue('PORTRAIT_LAYOUT_1X1_GUEST_MAIN_IMAGE'),
-      portrait_layout1x1_guestMobileImage: getCellValue('PORTRAIT_LAYOUT_1X1_GUEST_MOBILE_IMAGE'),
-      portrait_layout1x2_mainImage: getCellValue('PORTRAIT_LAYOUT_1X2_MAIN_IMAGE'),
-      portrait_layout1x2_mobileImage: getCellValue('PORTRAIT_LAYOUT_1X2_MOBILE_IMAGE'),
-      portrait_layout1x2_guestMainImage: getCellValue('PORTRAIT_LAYOUT_1X2_GUEST_MAIN_IMAGE'),
-      portrait_layout1x2_guestMobileImage: getCellValue('PORTRAIT_LAYOUT_1X2_GUEST_MOBILE_IMAGE'),
-      portrait_layout2x1_mainImage: getCellValue('PORTRAIT_LAYOUT_2X1_MAIN_IMAGE'),
-      portrait_layout2x1_mobileImage: getCellValue('PORTRAIT_LAYOUT_2X1_MOBILE_IMAGE'),
-      portrait_layout2x1_guestMainImage: getCellValue('PORTRAIT_LAYOUT_2X1_GUEST_MAIN_IMAGE'),
-      portrait_layout2x1_guestMobileImage: getCellValue('PORTRAIT_LAYOUT_2X1_GUEST_MOBILE_IMAGE'),
-      portrait_layout2x2_mainImage: getCellValue('PORTRAIT_LAYOUT_2X2_MAIN_IMAGE'),
-      portrait_layout2x2_mobileImage: getCellValue('PORTRAIT_LAYOUT_2X2_MOBILE_IMAGE'),
-      portrait_layout2x2_guestMainImage: getCellValue('PORTRAIT_LAYOUT_2X2_GUEST_MAIN_IMAGE'),
-      portrait_layout2x2_guestMobileImage: getCellValue('PORTRAIT_LAYOUT_2X2_GUEST_MOBILE_IMAGE'),
-
-      square_layout1x1_mainImage: getCellValue('SQUARE_LAYOUT_1X1_MAIN_IMAGE'),
-      square_layout1x1_mobileImage: getCellValue('SQUARE_LAYOUT_1X1_MOBILE_IMAGE'),
-      square_layout1x1_guestMainImage: getCellValue('SQUARE_LAYOUT_1X1_GUEST_MAIN_IMAGE'),
-      square_layout1x1_guestMobileImage: getCellValue('SQUARE_LAYOUT_1X1_GUEST_MOBILE_IMAGE'),
-      square_layout1x2_mainImage: getCellValue('SQUARE_LAYOUT_1X2_MAIN_IMAGE'),
-      square_layout1x2_mobileImage: getCellValue('SQUARE_LAYOUT_1X2_MOBILE_IMAGE'),
-      square_layout1x2_guestMainImage: getCellValue('SQUARE_LAYOUT_1X2_GUEST_MAIN_IMAGE'),
-      square_layout1x2_guestMobileImage: getCellValue('SQUARE_LAYOUT_1X2_GUEST_MOBILE_IMAGE'),
-      square_layout2x1_mainImage: getCellValue('SQUARE_LAYOUT_2X1_MAIN_IMAGE'),
-      square_layout2x1_mobileImage: getCellValue('SQUARE_LAYOUT_2X1_MOBILE_IMAGE'),
-      square_layout2x1_guestMainImage: getCellValue('SQUARE_LAYOUT_2X1_GUEST_MAIN_IMAGE'),
-      square_layout2x1_guestMobileImage: getCellValue('SQUARE_LAYOUT_2X1_GUEST_MOBILE_IMAGE'),
-      square_layout2x2_mainImage: getCellValue('SQUARE_LAYOUT_2X2_MAIN_IMAGE'),
-      square_layout2x2_mobileImage: getCellValue('SQUARE_LAYOUT_2X2_MOBILE_IMAGE'),
-      square_layout2x2_guestMainImage: getCellValue('SQUARE_LAYOUT_2X2_GUEST_MAIN_IMAGE'),
-      square_layout2x2_guestMobileImage: getCellValue('SQUARE_LAYOUT_2X2_GUEST_MOBILE_IMAGE'),
       
-      articleId: getCellValue('ARTICLE_ID'),
-      mobileArticleId: getCellValue('MOBILE_ARTICLE_ID'),
-      description: getCellValue('DESCRIPTION'),
-      ['gameLabelsData_Drops and Wins']: getCellValue('GAMELABELS_DROPS_AND_WINS'),
-      ['gameLabelsData_Rising Star']: getCellValue('GAMELABELS_RISING_STAR'),
-      gameLabelsData_Exclusive: getCellValue('GAMELABELS_EXCLUSIVE'),
-      gameLabelsData_New: getCellValue('GAMELABELS_NEW'),
       gamesCustomFields_provider: finalGameProvider,
-      gamesCustomFields_externalProviderGameId: getCellValue('GAMESCUSTOMFIELDS_EXTERNALPROVIDERGAMEID'),
-      gamesCustomFields_gameType: getCellValue('GAMESCUSTOMFIELDS_GAMETYPE'),
-      gamesCustomFields_theme: getCellValue('GAMESCUSTOMFIELDS_THEME'),
-      gamesCustomFields_features: getCellValue('GAMESCUSTOMFIELDS_FEATURES'),
-      gamesCustomFields_volatility: getCellValue('GAMESCUSTOMFIELDS_VOLATILITY'),
-      gamesCustomFields_rtp: getCellValue('GAMESCUSTOMFIELDS_RTP'),
-      gamesCustomFields_lines: getCellValue('GAMESCUSTOMFIELDS_LINES'),
-      gamesCustomFields_reels: getCellValue('GAMESCUSTOMFIELDS_REELS'),
+      gamesCustomFields_externalProviderGameId: providerGameCode,
+      gamesCustomFields_gameType: category,
+      gameLabelsData_New: options.isGameNew ? "New" : undefined,
+
+      isFreeSpinsFeatureActive: false,
+      isGoldenChipsFeatureActive: false,
+
+      // Set all other fields to undefined/default to match the new output format
+      bingoGameType: undefined,
+      vfGameType: undefined,
+      jackpotCode: undefined,
+      urlCustomParameters: undefined,
+      landscape_layout1x1_mobileImage: undefined, landscape_layout1x1_guestMainImage: undefined, landscape_layout1x1_guestMobileImage: undefined, landscape_layout1x2_mainImage: undefined, landscape_layout1x2_mobileImage: undefined, landscape_layout1x2_guestMainImage: undefined, landscape_layout1x2_guestMobileImage: undefined, landscape_layout2x1_mainImage: undefined, landscape_layout2x1_mobileImage: undefined, landscape_layout2x1_guestMainImage: undefined, landscape_layout2x1_guestMobileImage: undefined, landscape_layout2x2_mainImage: undefined, landscape_layout2x2_mobileImage: undefined, landscape_layout2x2_guestMainImage: undefined, landscape_layout2x2_guestMobileImage: undefined,
+      portrait_layout1x1_mobileImage: undefined, portrait_layout1x1_guestMainImage: undefined, portrait_layout1x1_guestMobileImage: undefined, portrait_layout1x2_mainImage: undefined, portrait_layout1x2_mobileImage: undefined, portrait_layout1x2_guestMainImage: undefined, portrait_layout1x2_guestMobileImage: undefined, portrait_layout2x1_mainImage: undefined, portrait_layout2x1_mobileImage: undefined, portrait_layout2x1_guestMainImage: undefined, portrait_layout2x1_guestMobileImage: undefined, portrait_layout2x2_mainImage: undefined, portrait_layout2x2_mobileImage: undefined, portrait_layout2x2_guestMainImage: undefined, portrait_layout2x2_guestMobileImage: undefined,
+      square_layout1x1_mainImage: undefined, square_layout1x1_mobileImage: undefined, square_layout1x1_guestMainImage: undefined, square_layout1x1_guestMobileImage: undefined, square_layout1x2_mainImage: undefined, square_layout1x2_mobileImage: undefined, square_layout1x2_guestMainImage: undefined, square_layout1x2_guestMobileImage: undefined, square_layout2x1_mainImage: undefined, square_layout2x1_mobileImage: undefined, square_layout2x1_guestMainImage: undefined, square_layout2x1_guestMobileImage: undefined, square_layout2x2_mainImage: undefined, square_layout2x2_mobileImage: undefined, square_layout2x2_guestMainImage: undefined, square_layout2x2_guestMobileImage: undefined,
+      articleId: undefined, mobileArticleId: undefined, description: undefined, gameLabelsData_Exclusive: undefined,
+      'gamesCustomFields_Theme': undefined, gamesCustomFields_features: undefined, gamesCustomFields_volatility: undefined, gamesCustomFields_rtp: undefined, 'gamesCustomFields_Paylines': undefined, gamesCustomFields_reels: undefined,
+      rtp: undefined, volatilityIndex: undefined, 'gameLabelsData_Best': undefined, 'gameLabelsData_Hot': undefined, gamesCustomFields_Screenshot: undefined, 'gamesCustomFields_Min bet': undefined, gamesCustomFields_Description: undefined,
+      'gameLabelsData_Drops and Wins': undefined,
+      'gameLabelsData_Rising Star': undefined
     };
     processedGames.push(rowData);
   }
@@ -322,7 +236,7 @@ export function parsePastedData(
 
 export function generateCsvContent(
   data: ProcessedGameData[],
-  columns: (keyof ProcessedGameData | 'gameLabelsData_Drops and Wins' | 'gameLabelsData_Rising Star')[]
+  columns: (keyof ProcessedGameData | string)[]
 ): string {
   if (data.length === 0) return '';
 
@@ -332,9 +246,13 @@ export function generateCsvContent(
       const value = row[col as keyof ProcessedGameData]; 
       
       if (typeof value === 'boolean') {
-        return String(value).toLowerCase();
+        return String(value).toUpperCase();
       }
       let cellValue = (value === undefined || value === null) ? '' : String(value);
+      
+      // Sanitize the value for legacy system compatibility
+      cellValue = sanitizeForLegacyCsv(cellValue);
+      
       cellValue = cellValue.replace(/\t/g, ' ').replace(/\n/g, ' '); 
       return cellValue;
     }).join('\t');

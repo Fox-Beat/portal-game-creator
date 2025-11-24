@@ -108,12 +108,23 @@ export interface ProcessedGameData {
   gamesCustomFields_provider?: string;
   gamesCustomFields_externalProviderGameId?: string; // Renamed from gamesCustomFields_providerGameId
   gamesCustomFields_gameType?: string;
-  gamesCustomFields_theme?: string;
+  'gamesCustomFields_Theme'?: string;
   gamesCustomFields_features?: string;
   gamesCustomFields_volatility?: string;
   gamesCustomFields_rtp?: string;
-  gamesCustomFields_lines?: string;
+  'gamesCustomFields_Paylines'?: string;
   gamesCustomFields_reels?: string;
+
+  // New Fields
+  rtp?: string;
+  volatilityIndex?: string;
+  isFreeSpinsFeatureActive: boolean;
+  isGoldenChipsFeatureActive: boolean;
+  ['gameLabelsData_Best']?: string;
+  ['gameLabelsData_Hot']?: string;
+  gamesCustomFields_Screenshot?: string;
+  ['gamesCustomFields_Min bet']?: string;
+  gamesCustomFields_Description?: string;
 }
 
 export interface GameProviderFolderMapping {

@@ -1,19 +1,19 @@
 
 import React, { useState, useCallback } from 'react';
 import { GoogleGenAI, Type } from "@google/genai";
-import { Header } from './components/Header';
-import { TextInputArea } from './components/TextInputArea';
-import { ActionButton } from './components/ActionButton';
-import { DataTable } from './components/DataTable';
-import { ProcessIcon } from './components/icons/ProcessIcon';
-import { DownloadIcon } from './components/icons/DownloadIcon';
-import { TableIcon } from './components/icons/TableIcon';
-import { ClearIcon } from './components/icons/ClearIcon';
-import { SparklesIcon } from './components/icons/SparklesIcon';
-import { ProcessedGameData, GameProviderFolderMapping } from './types';
-import { GAME_PROVIDER_TO_FOLDER_MAP_CA, GAME_PROVIDER_TO_FOLDER_MAP_COM, APP_TITLE, OUTPUT_CSV_COLUMNS, PLACEHOLDER_INFO_REQUIRED_COLUMNS } from './constants';
-import { parsePastedData, generateCsvContent } from './services/dataProcessor';
-import { ApiKeyInput } from './components/ApiKeyInput';
+import { Header } from './components/Header.tsx';
+import { TextInputArea } from './components/TextInputArea.tsx';
+import { ActionButton } from './components/ActionButton.tsx';
+import { DataTable } from './components/DataTable.tsx';
+import { ProcessIcon } from './components/icons/ProcessIcon.tsx';
+import { DownloadIcon } from './components/icons/DownloadIcon.tsx';
+import { TableIcon } from './components/icons/TableIcon.tsx';
+import { ClearIcon } from './components/icons/ClearIcon.tsx';
+import { SparklesIcon } from './components/icons/SparklesIcon.tsx';
+import { ProcessedGameData, GameProviderFolderMapping } from './types.ts';
+import { GAME_PROVIDER_TO_FOLDER_MAP_CA, GAME_PROVIDER_TO_FOLDER_MAP_COM, APP_TITLE, OUTPUT_CSV_COLUMNS, PLACEHOLDER_INFO_REQUIRED_COLUMNS } from './constants.ts';
+import { parsePastedData, generateCsvContent } from './services/dataProcessor.ts';
+import { ApiKeyInput } from './components/ApiKeyInput.tsx';
 
 const App: React.FC = () => {
   const [apiKey, setApiKey] = useState<string>('');
@@ -22,6 +22,9 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isEnriching, setIsEnriching] = useState<boolean>(false);
+  const [isGameNew, setIsGameNew] = useState<boolean>(true);
+  const [isMaintenanceMode, setIsMaintenanceMode] = useState<boolean>(true);
+  const [enrichmentLanguage, setEnrichmentLanguage] = useState<string>('American English');
 
   const handleProcessData = useCallback(async (providerMapToUse: GameProviderFolderMapping, context: string) => {
     if (!rawText.trim()) {
@@ -38,7 +41,7 @@ const App: React.FC = () => {
     try
     {
       await new Promise(resolve => setTimeout(resolve, 100)); 
-      const data = parsePastedData(rawText, providerMapToUse);
+      const data = parsePastedData(rawText, providerMapToUse, { isGameNew, isMaintenanceMode });
       setProcessedData(data);
       if (data.length === 0 && !error) { 
          setError("No valid data rows found or core required headers are missing. " + PLACEHOLDER_INFO_REQUIRED_COLUMNS);
@@ -53,7 +56,7 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [rawText, error]); // error is a dependency because it's checked in the if condition
+  }, [rawText, error, isGameNew, isMaintenanceMode]);
 
   const handleEnrichData = useCallback(async () => {
     if (!apiKey.trim()) {
@@ -79,12 +82,12 @@ const App: React.FC = () => {
           reels: { type: Type.STRING, description: "Number of reels (e.g., '5', '3', 'Cluster Pays')." },
           theme: {
             type: Type.ARRAY,
-            description: "List of themes for the game from the allowed list.",
+            description: "List of themes for the game.",
             items: { type: Type.STRING }
           },
           features: {
             type: Type.ARRAY,
-            description: "List of key features for the game from the allowed list.",
+            description: "List of key features for the game.",
             items: { type: Type.STRING }
           },
         }
@@ -92,12 +95,14 @@ const App: React.FC = () => {
 
       const enrichmentPromises = processedData.map(async (game) => {
         // Skip if data already exists to avoid unnecessary API calls
-        if (game.gamesCustomFields_gameType && game.gamesCustomFields_theme) {
+        if (game.gamesCustomFields_gameType && game['gamesCustomFields_Theme']) {
             return game;
         }
 
         const prompt = `
 Analyze the casino game named '${game.name}' from provider '${game.gameProvider}'. Preserve all special characters (™, ®, ©) in the name. Provide the following details based on the strict rules below.
+
+**IMPORTANT: All text-based responses (themes, features) MUST be in ${enrichmentLanguage}.**
 
 **Game Information Rules:**
 
@@ -105,17 +110,18 @@ Analyze the casino game named '${game.name}' from provider '${game.gameProvider}
 2.  **volatility**: A number on a scale of 1 to 8. Use these mappings: Low=2, Medium=4, Medium-High=6, High/Very High=8.
 3.  **lines**: The number of paylines or ways (e.g., "20", "243", "117649", "Cluster Pays").
 4.  **reels**: The number of reels. THIS IS CRITICAL. Be exceptionally accurate. Cross-reference multiple sources. Classic/retro slots are often 3 reels.
-5.  **theme**: A list of themes selected ONLY from the 'Allowed Themes' list.
-6.  **features**: A list of prominent features (max 20) selected ONLY from the 'Allowed Features' list.
+5.  **theme**: A list of themes.
+6.  **features**: A list of prominent features (max 20).
 
-**Allowed Themes:**
-"Asian", "Egypt", "Mythology", "Animals", "Buffalos", "Vegas Vibes", "Adventure", "Fantasy", "Gems", "Fruits", "Wild West", "Irish", "Magic", "Sci-Fi", "Horror", "Money", "Pirates", "Candy", "Fishing", "Rome", "Pigs", "Barnyard Bonanza", "Greek Gods", "Retro Reels".
+**Theme & Feature Rules:**
+*   **If the language is 'American English'**, you MUST select themes and features ONLY from the 'Allowed Lists' below.
+*   **If the language is 'Mexican Spanish'**, use the 'Allowed Lists' as a reference for the *types* of themes and features to identify, but provide the final list of themes and features in Mexican Spanish. For example, if a game's theme is "Animals", the Spanish output should be ["Animales"].
 
-**Allowed Features:**
-"Megaways", "Hold and Win", "Cash Collect", "Link&Win", "Cluster Pays", "Jackpot", "Expanding Wilds", "Sticky Wilds", "Cascading Reels", "Colossal Symbols", "Multipliers", "Respins", "Infinity Reels", "Ways to Win", "Split Symbols", "Nudging Wilds", "Power Reels", "Gigablox", "InfiniReels", "Bonus Wheel".
+**Allowed Lists (for English reference):**
+*   **Allowed Themes:** "Asian", "Egypt", "Mythology", "Animals", "Buffalos", "Vegas Vibes", "Adventure", "Fantasy", "Gems", "Fruits", "Wild West", "Irish", "Magic", "Sci-Fi", "Horror", "Money", "Pirates", "Candy", "Fishing", "Rome", "Pigs", "Barnyard Bonanza", "Greek Gods", "Retro Reels".
+*   **Allowed Features:** "Megaways", "Hold and Win", "Cash Collect", "Link&Win", "Cluster Pays", "Jackpot", "Expanding Wilds", "Sticky Wilds", "Cascading Reels", "Colossal Symbols", "Multipliers", "Respins", "Infinity Reels", "Ways to Win", "Split Symbols", "Nudging Wilds", "Power Reels", "Gigablox", "InfiniReels", "Bonus Wheel".
 
 **IMPORTANT SPECIFIC RULES:**
-
 *   **DO NOT** list "Free Spins", "Bonus Buy", "Bonus Game", or "Gamble" as features.
 *   If a game has **3 reels**, its themes MUST include "Retro Reels".
 *   If a game is based on Greek mythology (e.g., 'Age of the Gods', 'Gates of Olympus'), its themes MUST include both 'Mythology' and 'Greek Gods'.
@@ -142,10 +148,10 @@ Analyze the casino game named '${game.name}' from provider '${game.gameProvider}
           return {
             ...game,
             gamesCustomFields_gameType: enrichedData.gameType || game.gamesCustomFields_gameType,
-            gamesCustomFields_theme: enrichedData.theme?.join(', ') || game.gamesCustomFields_theme,
+            'gamesCustomFields_Theme': enrichedData.theme?.join(', ') || game['gamesCustomFields_Theme'],
             gamesCustomFields_features: enrichedData.features?.join(', ') || game.gamesCustomFields_features,
             gamesCustomFields_volatility: enrichedData.volatility || game.gamesCustomFields_volatility,
-            gamesCustomFields_lines: enrichedData.lines || game.gamesCustomFields_lines,
+            'gamesCustomFields_Paylines': enrichedData.lines || game['gamesCustomFields_Paylines'],
             gamesCustomFields_reels: enrichedData.reels || game.gamesCustomFields_reels,
           };
         } catch (e) {
@@ -166,7 +172,7 @@ Analyze the casino game named '${game.name}' from provider '${game.gameProvider}
     } finally {
       setIsEnriching(false);
     }
-  }, [processedData, apiKey]);
+  }, [processedData, apiKey, enrichmentLanguage]);
 
 
   const handleDownloadCsv = useCallback(() => {
@@ -230,22 +236,57 @@ Analyze the casino game named '${game.name}' from provider '${game.gameProvider}
             onChange={setRawText}
             placeholder={`Paste your tab-separated game data here. Ensure the first row contains all necessary headers. ${PLACEHOLDER_INFO_REQUIRED_COLUMNS}`}
           />
+          <div className="my-6 grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
+            <div className="flex items-center">
+              <input
+                id="isGameNew"
+                type="checkbox"
+                checked={isGameNew}
+                onChange={(e) => setIsGameNew(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-500 bg-slate-700 text-sky-600 focus:ring-sky-500"
+                aria-describedby="isGameNewLabel"
+              />
+              <label id="isGameNewLabel" htmlFor="isGameNew" className="ml-2 block text-sm text-slate-300">
+                Add "New" Tag
+              </label>
+            </div>
+            <div className="flex items-center">
+              <input
+                id="isMaintenanceMode"
+                type="checkbox"
+                checked={isMaintenanceMode}
+                onChange={(e) => setIsMaintenanceMode(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-500 bg-slate-700 text-sky-600 focus:ring-sky-500"
+                aria-describedby="isMaintenanceModeLabel"
+              />
+              <label id="isMaintenanceModeLabel" htmlFor="isMaintenanceMode" className="ml-2 block text-sm text-slate-300">
+                Maintenance Mode
+              </label>
+            </div>
+            <div className="flex items-center">
+              <label htmlFor="language" className="block text-sm text-slate-300 mr-2 shrink-0">
+                AI Language:
+              </label>
+              <select
+                id="language"
+                name="language"
+                value={enrichmentLanguage}
+                onChange={(e) => setEnrichmentLanguage(e.target.value)}
+                className="w-full rounded-md border-slate-600 bg-slate-700 py-2 pl-3 pr-8 text-slate-100 text-sm focus:ring-sky-500 focus:border-sky-500"
+              >
+                <option>American English</option>
+                <option>Mexican Spanish</option>
+              </select>
+            </div>
+          </div>
           <div className="mt-6 flex flex-wrap gap-4 items-center">
             <ActionButton
-              onClick={() => handleProcessData(GAME_PROVIDER_TO_FOLDER_MAP_CA, ".CA")}
+              onClick={() => handleProcessData(GAME_PROVIDER_TO_FOLDER_MAP_CA, ".MX")}
               disabled={isLoading || !rawText.trim()}
               className="bg-sky-600 hover:bg-sky-500 disabled:bg-sky-800 disabled:text-slate-500 transition-colors"
               icon={<ProcessIcon />}
             >
-              {isLoading ? 'Processing...' : 'Process: .CA'}
-            </ActionButton>
-            <ActionButton
-              onClick={() => handleProcessData(GAME_PROVIDER_TO_FOLDER_MAP_COM, ".COM")}
-              disabled={isLoading || !rawText.trim()}
-              className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 disabled:text-slate-500 transition-colors"
-              icon={<ProcessIcon />}
-            >
-              {isLoading ? 'Processing...' : 'Process: .COM'}
+              {isLoading ? 'Processing...' : 'Process Data'}
             </ActionButton>
             <ActionButton
               onClick={handleClearData}

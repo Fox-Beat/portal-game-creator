@@ -16,7 +16,7 @@ export const Header: React.FC<HeaderProps> = ({ title, subtitle }) => {
       />
       <h1 className="text-4xl font-bold text-[#66acde] sm:text-5xl">{title}</h1>
       {subtitle && <p className="mt-3 text-lg text-slate-400 sm:text-xl">{subtitle}</p>}
-      <p className="mt-2 text-base font-medium text-slate-500">NorthStarBets Version</p>
+      <p className="mt-2 text-base font-medium text-slate-500">HARD ROCK MEXICO VERSION</p>
     </header>
   );
 };

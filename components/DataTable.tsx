@@ -1,13 +1,13 @@
 
 import React from 'react';
-import { ProcessedGameData } from '../types';
+import { ProcessedGameData } from '../types.ts';
 
 interface DataTableProps {
   data: ProcessedGameData[];
-  columns: (keyof ProcessedGameData | 'gameLabelsData_Drops and Wins' | 'gameLabelsData_Rising Star')[];
+  columns: (keyof ProcessedGameData | 'gameLabelsData_Drops and Wins' | 'gameLabelsData_Rising Star' | 'gameLabelsData_Best' | 'gameLabelsData_Hot' | 'gamesCustomFields_Min bet' | 'gamesCustomFields_Theme' | 'gamesCustomFields_Paylines')[];
 }
 
-const columnDisplayNames: Partial<Record<keyof ProcessedGameData | 'gameLabelsData_Drops and Wins' | 'gameLabelsData_Rising Star', string>> = {
+const columnDisplayNames: Partial<Record<keyof ProcessedGameData | 'gameLabelsData_Drops and Wins' | 'gameLabelsData_Rising Star' | 'gameLabelsData_Best' | 'gameLabelsData_Hot' | 'gamesCustomFields_Min bet' | 'gamesCustomFields_Theme' | 'gamesCustomFields_Paylines', string>> = {
   gameCode: "Game Code",
   name: "Name",
   isActive: "Active",
@@ -105,12 +105,21 @@ const columnDisplayNames: Partial<Record<keyof ProcessedGameData | 'gameLabelsDa
   gamesCustomFields_provider: "Custom Provider",
   gamesCustomFields_externalProviderGameId: "Custom Ext. Provider ID", // Renamed
   gamesCustomFields_gameType: "Game Type",
-  gamesCustomFields_theme: "Theme",
+  'gamesCustomFields_Theme': "Theme",
   gamesCustomFields_features: "Features",
   gamesCustomFields_volatility: "Volatility",
-  gamesCustomFields_rtp: "RTP",
-  gamesCustomFields_lines: "Lines",
+  gamesCustomFields_rtp: "Custom RTP",
+  'gamesCustomFields_Paylines': "Paylines",
   gamesCustomFields_reels: "Reels",
+  rtp: "RTP",
+  volatilityIndex: "Volatility Index",
+  isFreeSpinsFeatureActive: "Free Spins Active",
+  isGoldenChipsFeatureActive: "Golden Chips Active",
+  'gameLabelsData_Best': "Best Label",
+  'gameLabelsData_Hot': "Hot Label",
+  gamesCustomFields_Screenshot: "Screenshot URL",
+  'gamesCustomFields_Min bet': "Min Bet",
+  gamesCustomFields_Description: "Custom Description",
 };
 
 
