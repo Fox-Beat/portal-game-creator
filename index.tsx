@@ -115,8 +115,8 @@ export interface ProcessedGameData {
   gamesCustomFields_provider?: string;
   gamesCustomFields_externalProviderGameId?: string;
   gamesCustomFields_gameType?: string;
-  'gamesCustomFields_Theme'?: string;
-  gamesCustomFields_features?: string;
+  gamesCustomFields_theme?: string;
+  gamesCustomFields_gameExtras?: string;
   gamesCustomFields_volatility?: string;
   gamesCustomFields_rtp?: string;
   'gamesCustomFields_Paylines'?: string;
@@ -328,8 +328,8 @@ const OUTPUT_CSV_COLUMNS: (keyof ProcessedGameData | string)[] = [
   'gameLabelsData_Exclusive',
   'gameLabelsData_New',
   'gamesCustomFields_gameType',
-  'gamesCustomFields_Theme',
-  'gamesCustomFields_features',
+  'gamesCustomFields_theme',
+  'gamesCustomFields_gameExtras',
   'gamesCustomFields_volatility',
   'gamesCustomFields_rtp',
   'gamesCustomFields_Paylines',
@@ -636,8 +636,8 @@ const columnDisplayNames: Record<string, string> = {
   gamesCustomFields_provider: "Custom Provider",
   gamesCustomFields_externalProviderGameId: "Custom Ext. Provider ID", 
   gamesCustomFields_gameType: "Game Type",
-  'gamesCustomFields_Theme': "Theme",
-  gamesCustomFields_features: "Features",
+  'gamesCustomFields_theme': "Theme",
+  gamesCustomFields_gameExtras: "Game Extras",
   gamesCustomFields_volatility: "Volatility",
   gamesCustomFields_rtp: "Custom RTP",
   'gamesCustomFields_Paylines': "Paylines",
@@ -872,7 +872,7 @@ function parsePastedData(
       osAvailability_android: true,
       osAvailability_windows: true,
       osAvailability_other: true,
-      isGameNew: options.isGameNew,
+      isGameNew: false, // Always false as per request
       isGamePopular: false,
       isGameHot: false,
       isGameExclusive: false,
@@ -885,7 +885,7 @@ function parsePastedData(
       gamesCustomFields_provider: finalGameProvider,
       gamesCustomFields_externalProviderGameId: providerGameCode,
       gamesCustomFields_gameType: category,
-      gameLabelsData_New: options.isGameNew ? "New" : undefined,
+      gameLabelsData_New: options.isGameNew ? "TRUE" : undefined,
 
       isFreeSpinsFeatureActive: false,
       isGoldenChipsFeatureActive: false,
@@ -897,9 +897,8 @@ function parsePastedData(
       urlCustomParameters: undefined,
       landscape_layout1x1_mobileImage: undefined, landscape_layout1x1_guestMainImage: undefined, landscape_layout1x1_guestMobileImage: undefined, landscape_layout1x2_mainImage: undefined, landscape_layout1x2_mobileImage: undefined, landscape_layout1x2_guestMainImage: undefined, landscape_layout1x2_guestMobileImage: undefined, landscape_layout2x1_mainImage: undefined, landscape_layout2x1_mobileImage: undefined, landscape_layout2x1_guestMainImage: undefined, landscape_layout2x1_guestMobileImage: undefined, landscape_layout2x2_mainImage: undefined, landscape_layout2x2_mobileImage: undefined, landscape_layout2x2_guestMainImage: undefined, landscape_layout2x2_guestMobileImage: undefined,
       portrait_layout1x1_mobileImage: undefined, portrait_layout1x1_guestMainImage: undefined, portrait_layout1x1_guestMobileImage: undefined, portrait_layout1x2_mainImage: undefined, portrait_layout1x2_mobileImage: undefined, portrait_layout1x2_guestMainImage: undefined, portrait_layout1x2_guestMobileImage: undefined, portrait_layout2x1_mainImage: undefined, portrait_layout2x1_mobileImage: undefined, portrait_layout2x1_guestMainImage: undefined, portrait_layout2x1_guestMobileImage: undefined, portrait_layout2x2_mainImage: undefined, portrait_layout2x2_mobileImage: undefined, portrait_layout2x2_guestMainImage: undefined, portrait_layout2x2_guestMobileImage: undefined,
-      square_layout1x1_mainImage: undefined, square_layout1x1_mobileImage: undefined, square_layout1x1_guestMainImage: undefined, square_layout1x1_guestMobileImage: undefined, square_layout1x2_mainImage: undefined, square_layout1x2_mobileImage: undefined, square_layout1x2_guestMainImage: undefined, square_layout1x2_guestMobileImage: undefined, square_layout2x1_mainImage: undefined, square_layout2x1_mobileImage: undefined, square_layout2x1_guestMainImage: undefined, square_layout2x1_guestMobileImage: undefined, square_layout2x2_mainImage: undefined, square_layout2x2_mobileImage: undefined, square_layout2x2_guestMainImage: undefined, square_layout2x2_guestMobileImage: undefined,
       articleId: undefined, mobileArticleId: undefined, description: undefined, gameLabelsData_Exclusive: undefined,
-      'gamesCustomFields_Theme': undefined, gamesCustomFields_features: undefined, gamesCustomFields_volatility: undefined, gamesCustomFields_rtp: undefined, 'gamesCustomFields_Paylines': undefined, gamesCustomFields_reels: undefined,
+      gamesCustomFields_theme: undefined, gamesCustomFields_gameExtras: undefined, gamesCustomFields_volatility: undefined, gamesCustomFields_rtp: undefined, 'gamesCustomFields_Paylines': undefined, gamesCustomFields_reels: undefined,
       rtp: undefined, volatilityIndex: undefined, 'gameLabelsData_Best': undefined, 'gameLabelsData_Hot': undefined, gamesCustomFields_Screenshot: undefined, 'gamesCustomFields_Min bet': undefined, gamesCustomFields_Description: undefined,
       'gameLabelsData_Drops and Wins': undefined,
       'gameLabelsData_Rising Star': undefined
@@ -1021,7 +1020,7 @@ const App: React.FC = () => {
 
       const enrichmentPromises = processedData.map(async (game) => {
         // Skip if data already exists to avoid unnecessary API calls
-        if (game.gamesCustomFields_gameType && game['gamesCustomFields_Theme']) {
+        if (game.gamesCustomFields_gameType && game.gamesCustomFields_theme) {
             return game;
         }
 
@@ -1076,8 +1075,8 @@ Analyze the casino game named '${game.name}' from provider '${game.gameProvider}
           return {
             ...game,
             gamesCustomFields_gameType: sanitizeForLegacyCsv(enrichedData.gameType || '') || game.gamesCustomFields_gameType,
-            'gamesCustomFields_Theme': sanitizeForLegacyCsv(enrichedData.theme?.join(', ') || '') || game['gamesCustomFields_Theme'],
-            gamesCustomFields_features: sanitizeForLegacyCsv(enrichedData.features?.join(', ') || '') || game.gamesCustomFields_features,
+            gamesCustomFields_theme: sanitizeForLegacyCsv(enrichedData.theme?.join(', ') || '') || game.gamesCustomFields_theme,
+            gamesCustomFields_gameExtras: sanitizeForLegacyCsv(enrichedData.features?.join(', ') || '') || game.gamesCustomFields_gameExtras,
             gamesCustomFields_volatility: enrichedData.volatility || game.gamesCustomFields_volatility,
             'gamesCustomFields_Paylines': sanitizeForLegacyCsv(enrichedData.lines || '') || game['gamesCustomFields_Paylines'],
             gamesCustomFields_reels: sanitizeForLegacyCsv(enrichedData.reels || '') || game.gamesCustomFields_reels,
@@ -1129,8 +1128,13 @@ Analyze the casino game named '${game.name}' from provider '${game.gameProvider}
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      
+      // Add a small delay before cleanup to ensure browser handles the download correctly
+      setTimeout(() => {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }, 100);
+
     } catch (e) {
       if (e instanceof Error) {
         setError(`Error generating CSV: ${e.message}`);
