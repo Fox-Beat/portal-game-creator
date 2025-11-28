@@ -179,6 +179,7 @@ const GAME_PROVIDER_TO_FOLDER_MAP_CA: GameProviderFolderMapping = {
   "Skywind": "SkyWind",
   "Drops & Wins": "Drops & Wins",
   "RubyPlay": "Rubyplay",
+  "Swintt": "Swintt",
   "Test": "Test"
 };
 
@@ -186,7 +187,7 @@ const GAME_PROVIDER_TO_FOLDER_MAP_COM: GameProviderFolderMapping = {
   "Blueprint": "Blueprint",
   "Bragg": "Bragg",
   "Drops & Wins": "Drops & Wins",
-  "Games Global": "Games Global",
+  "Games Global": "games-global",
   "Live Casino": "Live Casino",
   "Oryx": "Oryx",
   "Peter & Sons": "Peter & Sons",
@@ -218,6 +219,7 @@ const GAME_PROVIDER_TO_FOLDER_MAP_COM: GameProviderFolderMapping = {
   "Relax Gaming": "Relax Gaming",
   "SkyWind": "SkyWind",
   "Skywind": "SkyWind",
+  "Swintt": "Swintt"
 };
 
 const INPUT_HEADER_MAPPINGS = {
@@ -396,7 +398,7 @@ const ClearIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     fill="none"
-    viewBox="0 0 24 24"
+    viewBox="0 0 24 24" 
     strokeWidth={1.5} 
     stroke="currentColor" 
     className="w-5 h-5"
@@ -435,7 +437,7 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ title, subtitle }) => {
   return (
-    <header className="w-full max-w-5xl text-center py-2">
+    <header className="w-full max-w-5xl text-center py-4">
       <img
         src="https://digibeat.com/wp-content/uploads/2022/06/logo-white-300x80.png"
         alt="Digibeat Logo"
